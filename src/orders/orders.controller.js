@@ -7,7 +7,12 @@ const orders = require(path.resolve("src/data/orders-data"));
 const nextId = require("../utils/nextId");
 const { deserialize } = require("v8");
 
-// TODO: Implement the /orders handlers needed to make the tests pass
+function storeOrderData(req, res, next) {
+    const { data: { deliverTo, mobileNumber, status, dishes } = {} } = req.body;
+    res.locals.orderData = { deliverTo, mobileNumber, status, dishes };
+    next();
+}
+
 function list(req, res) {
     res.status(200).json({ data: orders });
 }
@@ -51,14 +56,10 @@ function validateQuantity(req, res, next) {
 }
 
 function create(req, res) {
-    const { data: { deliverTo, mobileNumber, status, dishes } } = req.body;
     const newOrder = {
         id: nextId(),
-        deliverTo,
-        mobileNumber,
-        status,
-        dishes,
-    }
+        ...res.locals.orderData,
+    };
 
     orders.push(newOrder);
     res.status(201).json({ data: newOrder });
@@ -71,8 +72,8 @@ function orderExist(req, res, next) {
     if (!order) {
         return next({
             status: 404,
-            message: "No matching order found",
-        })
+            message:  `Order id not found: ${orderId}`,
+        });
     }
     res.locals.order = order;
     next();
@@ -84,7 +85,7 @@ function read(req, res) {
 
 function update(req, res) {
     const order = res.locals.order;
-    const { data: { deliverTo, mobileNumber, status, dishes } = {} } = req.body;
+    const { deliverTo, mobileNumber, status, dishes } = req.body.data;
 
     order.deliverTo = deliverTo;
     order.mobileNumber = mobileNumber;
@@ -103,7 +104,7 @@ function validateId(req, res, next) {
 
     if (orderId !== id) {
         return next({
-            status: 404,
+            status: 400,
             message: `Order id does not match route id. Order: ${id}, Route: $${orderId}`,
         })
     }
@@ -144,7 +145,7 @@ function nonPendingOrder(req, res, next) {
 
 function destroy(req, res) {
     const { orderId } = req.params;
-    const index = orders.findIndex(o => o.id === Number(orderId));
+    const index = orders.findIndex(o => o.id === orderId);
     orders.splice(index, 1);
     res.sendStatus(204);
 }
@@ -156,20 +157,22 @@ module.exports = {
         bodyDataHas("dishes"),
         validateDish,
         validateQuantity,
+        storeOrderData,
         create,
     ],
     list,
     read: [orderExist, read],
     update: [
         orderExist,
+        validateId,
         bodyDataHas("deliverTo"),
         bodyDataHas("mobileNumber"),
         bodyDataHas("dishes"),
         validateDish,
         validateQuantity,
-        validateId,
         validateStatus,
         deliveredStatus,
+        storeOrderData,
         update,
     ],
     delete: [orderExist, nonPendingOrder, destroy],
